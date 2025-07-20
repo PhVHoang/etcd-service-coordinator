@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -127,12 +128,19 @@ func (c *Coordinator) GetHealthy(ctx context.Context, serviceName string) ([]*re
 	
 	var healthyServices []*registry.ServiceInfo
 	for _, service := range allServices {
-		if service.Health == registry.HealthStatusHealthy {
-			healthyServices = append(healthyServices, service)
-		}
-	}
-	
-	return healthyServices, nil
+        // Use the health checker if available
+        if c.healthChecker != nil {
+            err := c.healthChecker.Check(ctx, service)
+            if err == nil {
+                service.Health = registry.HealthStatusHealthy
+                healthyServices = append(healthyServices, service)
+            }
+        } else if service.Health == registry.HealthStatusHealthy {
+            healthyServices = append(healthyServices, service)
+        }
+    }
+    
+    return healthyServices, nil
 }
 
 // Watch implements ServiceRegistry interface
@@ -182,6 +190,20 @@ func (c *Coordinator) Watch(ctx context.Context, serviceName string) (<-chan []*
 	return resultChan, nil
 }
 
+func (c *Coordinator) SelectService(ctx context.Context, serviceName string) (*registry.ServiceInfo, error) {
+    healthyServices, err := c.GetHealthy(ctx, serviceName)
+    if err != nil {
+        return nil, err
+    }
+    
+    if len(healthyServices) == 0 {
+        return nil, fmt.Errorf("no healthy services available for %s", serviceName)
+    }
+    
+    return c.balancer.Select(ctx, healthyServices)
+}
+
+
 // Close implements ServiceRegistry interface
 func (c *Coordinator) Close() error {
 	c.cancel()
@@ -199,10 +221,18 @@ func (c *Coordinator) servicePrefix(serviceName string) string {
 
 func (c *Coordinator) serializeService(service *registry.ServiceInfo) (string, error) {
 	// Implementation would serialize to JSON or protobuf
-	return "", nil
+	data, err := json.Marshal(service)
+	if err != nil {
+		return  "", fmt.Errorf("failed to marshal service: %w", err)
+	}
+	return string(data), nil
 }
 
 func (c *Coordinator) deserializeService(data string) (*registry.ServiceInfo, error) {
 	// Implementation would deserialize from JSON or protobuf
-	return nil, nil
+	var service registry.ServiceInfo
+	if err := json.Unmarshal([]byte(data), &service); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal service: %w", err)
+	}
+	return &service, nil
 }
