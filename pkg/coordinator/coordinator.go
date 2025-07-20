@@ -9,7 +9,6 @@ import (
 
 	"github.com/PhVHoang/cache-coordinator/pkg/balancer"
 	"github.com/PhVHoang/cache-coordinator/pkg/health"
-	"github.com/PhVHoang/cache-coordinator/pkg/registry"
 	"github.com/PhVHoang/cache-coordinator/pkg/storage"
 	"go.uber.org/zap"
 	"honnef.co/go/tools/config"
@@ -23,7 +22,7 @@ type Coordinator struct {
 	config       *config.Config
 	logger       *zap.Logger
 	
-	services map[string]*registry.ServiceInfo
+	services map[string]*health.ServiceInfo
 	mu       sync.RWMutex
 
 	// For graceful shutdown only - NOT for operation contexts
@@ -68,7 +67,7 @@ func NewCoordinator(ctx context.Context, opts Options) (*Coordinator, error) {
 		healthChecker: opts.HealthChecker,
 		config:        opts.Config,
 		logger:        opts.Logger,
-		services:      make(map[string]*registry.ServiceInfo),
+		services:      make(map[string]*health.ServiceInfo),
 		shutdownCtx:   shutdownCtx,
 		shutdownCancel: cancel,
 	}
@@ -82,7 +81,7 @@ func NewCoordinator(ctx context.Context, opts Options) (*Coordinator, error) {
 }
 
 // Register implements ServiceRegistry interface
-func (c *Coordinator) Register(ctx context.Context, service *registry.ServiceInfo) error {
+func (c *Coordinator) Register(ctx context.Context, service *health.ServiceInfo) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	
@@ -110,14 +109,14 @@ func (c *Coordinator) Register(ctx context.Context, service *registry.ServiceInf
 }
 
 // Discover implements ServiceRegistry interface
-func (c *Coordinator) Discover(ctx context.Context, serviceName string) ([]*registry.ServiceInfo, error) {
+func (c *Coordinator) Discover(ctx context.Context, serviceName string) ([]*health.ServiceInfo, error) {
 	prefix := c.servicePrefix(serviceName)
 	data, err := c.storage.List(ctx, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover services: %w", err)
 	}
 	
-	var services []*registry.ServiceInfo
+	var services []*health.ServiceInfo
 	for _, value := range data {
 		service, err := c.deserializeService(value)
 		if err != nil {
@@ -133,22 +132,22 @@ func (c *Coordinator) Discover(ctx context.Context, serviceName string) ([]*regi
 }
 
 // GetHealthy implements ServiceRegistry interface
-func (c *Coordinator) GetHealthy(ctx context.Context, serviceName string) ([]*registry.ServiceInfo, error) {
+func (c *Coordinator) GetHealthy(ctx context.Context, serviceName string) ([]*health.ServiceInfo, error) {
 	allServices, err := c.Discover(ctx, serviceName)
 	if err != nil {
 		return nil, err
 	}
 	
-	var healthyServices []*registry.ServiceInfo
+	var healthyServices []*health.ServiceInfo
 	for _, service := range allServices {
         // Use the health checker if available
         if c.healthChecker != nil {
             isHealthy, err := c.healthChecker.Check(ctx, service)
             if isHealthy && err == nil {
-                service.Health = registry.HealthStatusHealthy
+                service.Health = health.HealthStatusHealthy
                 healthyServices = append(healthyServices, service)
             }
-        } else if service.Health == registry.HealthStatusHealthy {
+        } else if service.Health == health.HealthStatusHealthy {
             healthyServices = append(healthyServices, service)
         }
     }
@@ -157,14 +156,14 @@ func (c *Coordinator) GetHealthy(ctx context.Context, serviceName string) ([]*re
 }
 
 // Watch implements ServiceRegistry interface
-func (c *Coordinator) Watch(ctx context.Context, serviceName string) (<-chan []*registry.ServiceInfo, error) {
+func (c *Coordinator) Watch(ctx context.Context, serviceName string) (<-chan []*health.ServiceInfo, error) {
 	prefix := c.servicePrefix(serviceName)
 	watchChan, err := c.storage.Watch(ctx, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to watch services: %w", err)
 	}
 	
-	resultChan := make(chan []*registry.ServiceInfo, 1)
+	resultChan := make(chan []*health.ServiceInfo, 1)
 	
 	go func() {
 		defer close(resultChan)
@@ -203,7 +202,7 @@ func (c *Coordinator) Watch(ctx context.Context, serviceName string) (<-chan []*
 	return resultChan, nil
 }
 
-func (c *Coordinator) SelectService(ctx context.Context, serviceName string) (*registry.ServiceInfo, error) {
+func (c *Coordinator) SelectService(ctx context.Context, serviceName string) (*health.ServiceInfo, error) {
     healthyServices, err := c.GetHealthy(ctx, serviceName)
     if err != nil {
         return nil, err
@@ -245,7 +244,7 @@ func (c *Coordinator) servicePrefix(serviceName string) string {
 	return fmt.Sprintf("/services/%s/", serviceName)
 }
 
-func (c *Coordinator) serializeService(service *registry.ServiceInfo) (string, error) {
+func (c *Coordinator) serializeService(service *health.ServiceInfo) (string, error) {
 	// Implementation would serialize to JSON or protobuf
 	data, err := json.Marshal(service)
 	if err != nil {
@@ -254,9 +253,9 @@ func (c *Coordinator) serializeService(service *registry.ServiceInfo) (string, e
 	return string(data), nil
 }
 
-func (c *Coordinator) deserializeService(data string) (*registry.ServiceInfo, error) {
+func (c *Coordinator) deserializeService(data string) (*health.ServiceInfo, error) {
 	// Implementation would deserialize from JSON or protobuf
-	var service registry.ServiceInfo
+	var service health.ServiceInfo
 	if err := json.Unmarshal([]byte(data), &service); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal service: %w", err)
 	}

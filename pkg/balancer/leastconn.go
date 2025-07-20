@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/PhVHoang/cache-coordinator/pkg/errors"
-	"github.com/PhVHoang/cache-coordinator/pkg/registry"
+	"github.com/PhVHoang/cache-coordinator/pkg/health"
 )
 
 // LeastConnectedBalancer implements least connections load balancing
@@ -22,7 +22,7 @@ func NewLeastConnectedLoadBalancer() LoadBalancer {
 }
 
 // Select implements LoadBalancer interface
-func (lb *LeastConnectedBalancer) Select(ctx context.Context, services []*registry.ServiceInfo) (*registry.ServiceInfo, error) {
+func (lb *LeastConnectedBalancer) Select(ctx context.Context, services []*health.ServiceInfo) (*health.ServiceInfo, error) {
 	if len(services) == 0 {
 		return nil, errors.ErrNoServicesAvailable
 	}
@@ -30,7 +30,7 @@ func (lb *LeastConnectedBalancer) Select(ctx context.Context, services []*regist
 	lb.mu.RLock()
 	defer lb.mu.RUnlock()
 	
-	var selected *registry.ServiceInfo
+	var selected *health.ServiceInfo
 	minConnections := int(^uint(0) >> 1) // Max int
 	
 	for _, service := range services {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/PhVHoang/cache-coordinator/pkg/coordinator"
-	"github.com/PhVHoang/cache-coordinator/pkg/registry"
+	"github.com/PhVHoang/cache-coordinator/pkg/health"
 	"github.com/PhVHoang/cache-coordinator/pkg/storage"
 )
 
@@ -56,7 +56,7 @@ type mockHealthChecker struct {
 	checkErr     error
 	startCalled  bool
 }
-func (m *mockHealthChecker) Check(ctx context.Context, service *registry.ServiceInfo) (bool, error) {
+func (m *mockHealthChecker) Check(ctx context.Context, service *health.ServiceInfo) (bool, error) {
 	return m.checkHealthy, m.checkErr
 }
 func (m *mockHealthChecker) StartMonitoring(ctx context.Context, interval time.Duration) error {
@@ -86,7 +86,7 @@ func TestRegister_Success(t *testing.T) {
 	coord, _ := coordinator.NewCoordinator(context.Background(), coordinator.Options{
 		Storage: storage,
 	})
-	service := &registry.ServiceInfo{
+	service := &health.ServiceInfo{
 		ID:      "id1",
 		Name:    "svc",
 		Address: "127.0.0.1",

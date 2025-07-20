@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 
 	customErrors "github.com/PhVHoang/cache-coordinator/pkg/errors"
-	"github.com/PhVHoang/cache-coordinator/pkg/registry"
+	"github.com/PhVHoang/cache-coordinator/pkg/health"
 )
 
 // RoundRobinBalancer implements a round-robin load balancing strategy
@@ -21,7 +21,7 @@ func NewRoundRobinBalancer() *RoundRobinBalancer {
 }
 
 // Select chooses a service instance using the round-robin strategy
-func (b *RoundRobinBalancer) Select(ctx context.Context, services []*registry.ServiceInfo) (*registry.ServiceInfo, error) {
+func (b *RoundRobinBalancer) Select(ctx context.Context, services []*health.ServiceInfo) (*health.ServiceInfo, error) {
 	if len(services) == 0 {
 		return nil, customErrors.ErrNoServicesAvailable
 	}

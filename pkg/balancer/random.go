@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/PhVHoang/cache-coordinator/pkg/errors"
-	"github.com/PhVHoang/cache-coordinator/pkg/registry"
+	"github.com/PhVHoang/cache-coordinator/pkg/health"
 )
 
 // RandomBalancer implements random load balancing
@@ -22,7 +22,7 @@ func NewRandomBalancer() LoadBalancer {
 }
 
 // Select implements LoadBalancer interface
-func (rb *RandomBalancer) Select(ctx context.Context, services []*registry.ServiceInfo) (*registry.ServiceInfo, error) {
+func (rb *RandomBalancer) Select(ctx context.Context, services []*health.ServiceInfo) (*health.ServiceInfo, error) {
 	if len(services) == 0 {
 		return nil, errors.ErrNoServicesAvailable
 	}

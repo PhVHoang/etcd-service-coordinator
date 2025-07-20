@@ -3,13 +3,13 @@ package balancer
 import (
 	"context"
 
-	"github.com/PhVHoang/cache-coordinator/pkg/registry"
+	"github.com/PhVHoang/cache-coordinator/pkg/health"
 )
 
 // LoadBalancer defines the load balancing interface
 type LoadBalancer interface {
 	// Select chooses a service instance from the available ones
-	Select(ctx context.Context, services []*registry.ServiceInfo) (*registry.ServiceInfo, error)
+	Select(ctx context.Context, services []*health.ServiceInfo) (*health.ServiceInfo, error)
 	
 	// Name returns the load balancer strategy name
 	Name() string

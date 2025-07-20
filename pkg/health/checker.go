@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PhVHoang/cache-coordinator/pkg/registry"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -17,7 +16,7 @@ import (
 
 type Checker interface {
 	// Check performs a health check on a service
-	Check(ctx context.Context, service *registry.ServiceInfo) (bool, error)
+	Check(ctx context.Context, service *ServiceInfo) (bool, error)
 
 	// StartMonitoring begins continuous health monitoring
 	StartMonitoring(ctx context.Context, interval time.Duration) error
@@ -25,6 +24,25 @@ type Checker interface {
 	// StopMonitoring stops health monitoring
 	StopMonitoring() error
 }
+
+type ServiceInfo struct {
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Address  string            `json:"address"`
+	Port     int               `json:"port"`
+	Health   HealthStatus      `json:"health"`
+	Metadata map[string]string `json:"metadata"`
+	TTL      time.Duration     `json:"ttl"`
+}
+
+type HealthStatus string
+
+const (
+	HealthStatusUnknown  HealthStatus = "unknown"
+	HealthStatusHealthy   HealthStatus = "healthy"
+	HealthStatusUnhealthy HealthStatus = "unhealthy"
+)
+
 
 // CheckStrategy defines different health check strategies
 type CheckStrategy string
@@ -97,7 +115,7 @@ func NewHealthChecker(opts HealthCheckerOptions) *HealthChecker {
 }
 
 // Check performs a health check on a service
-func (hc *HealthChecker) Check(ctx context.Context, service *registry.ServiceInfo) (bool, error) {
+func (hc *HealthChecker) Check(ctx context.Context, service *ServiceInfo) (bool, error) {
 	if service == nil {
 		return false, fmt.Errorf("service info cannot be nil")
 	}
@@ -144,7 +162,7 @@ func (hc *HealthChecker) Check(ctx context.Context, service *registry.ServiceInf
 }
 
 // checkHTTP performs HTTP health check
-func (hc *HealthChecker) checkHTTP(ctx context.Context, service *registry.ServiceInfo) (bool, error) {
+func (hc *HealthChecker) checkHTTP(ctx context.Context, service *ServiceInfo) (bool, error) {
 	// Get custom endpoint or use default
 	hc.mu.RLock()
 	endpoint, hasCustom := hc.healthEndpoints[service.ID]
@@ -189,7 +207,7 @@ func (hc *HealthChecker) checkHTTP(ctx context.Context, service *registry.Servic
 }
 
 // checkTCP performs TCP connection health check
-func (hc *HealthChecker) checkTCP(ctx context.Context, service *registry.ServiceInfo) (bool, error) {
+func (hc *HealthChecker) checkTCP(ctx context.Context, service *ServiceInfo) (bool, error) {
 	address := fmt.Sprintf("%s:%d", service.Address, service.Port)
 	
 	dialer := &net.Dialer{
@@ -206,7 +224,7 @@ func (hc *HealthChecker) checkTCP(ctx context.Context, service *registry.Service
 }
 
 // checkGRPC performs gRPC health check using the standard gRPC health protocol
-func (hc *HealthChecker) checkGRPC(ctx context.Context, service *registry.ServiceInfo) (bool, error) {
+func (hc *HealthChecker) checkGRPC(ctx context.Context, service *ServiceInfo) (bool, error) {
 	address := fmt.Sprintf("%s:%d", service.Address, service.Port)
 	
 	// Create gRPC connection with timeout
@@ -306,10 +324,10 @@ func (hc *HealthChecker) monitoringLoop(interval time.Duration) {
 			return
 		case <-ticker.C:
 			// FIXME: This is a simplified monitoring loop
-			// In a real implementation, you'd need access to the service registry
+			// In a real implementation, you'd need access to the service 
 			// to get the list of services to monitor
 			hc.logger.Debug("Health monitoring tick")
-			// TODO: Implement actual monitoring logic when integrated with service registry
+			// TODO: Implement actual monitoring logic when integrated with service 
 		}
 	}
 }
@@ -372,7 +390,7 @@ func (msc *MultiStrategyChecker) AddStrategy(strategy CheckStrategy, checker *He
 }
 
 // Check performs health check using the strategy specified in service metadata
-func (msc *MultiStrategyChecker) Check(ctx context.Context, service *registry.ServiceInfo) (bool, error) {
+func (msc *MultiStrategyChecker) Check(ctx context.Context, service *ServiceInfo) (bool, error) {
 	strategy := HttpStrategy // default
 	
 	if service.Metadata != nil {
