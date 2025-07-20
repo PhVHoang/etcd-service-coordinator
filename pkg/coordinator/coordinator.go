@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/PhVHoang/cache-coordinator/pkg/balancer"
 	"github.com/PhVHoang/cache-coordinator/pkg/health"
@@ -24,9 +25,13 @@ type Coordinator struct {
 	
 	services map[string]*registry.ServiceInfo
 	mu       sync.RWMutex
-	
-	ctx    context.Context
-	cancel context.CancelFunc
+
+	// For graceful shutdown only - NOT for operation contexts
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+
+	// Track background goroutines for cleanup
+	wg sync.WaitGroup
 }
 
 type Options struct {
@@ -37,7 +42,7 @@ type Options struct {
 	Logger *zap.Logger
 }
 
-func NewCoordinator(opts Options) (*Coordinator, error) {
+func NewCoordinator(ctx context.Context, opts Options) (*Coordinator, error) {
 	if opts.Storage == nil {
 		return nil, fmt.Errorf("storage backend is required")
 	}
@@ -54,18 +59,26 @@ func NewCoordinator(opts Options) (*Coordinator, error) {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// This context is ONLY for coordinator lifecycle/shutdown
+	shutdownCtx, cancel := context.WithCancel(context.Background())
 
-	return &Coordinator{
+	c := &Coordinator{
 		storage:       opts.Storage,
 		balancer:      opts.LoadBalancer,
 		healthChecker: opts.HealthChecker,
 		config:        opts.Config,
 		logger:        opts.Logger,
 		services:      make(map[string]*registry.ServiceInfo),
-		ctx:           ctx,
-		cancel:        cancel,
-	}, nil
+		shutdownCtx:   shutdownCtx,
+		shutdownCancel: cancel,
+	}
+
+	// Start background health checking if health checker is provided
+	if opts.HealthChecker != nil {
+		c.healthChecker.StartMonitoring(ctx, time.Duration(time.Duration(30).Seconds()))
+	}
+
+	return c, nil
 }
 
 // Register implements ServiceRegistry interface
@@ -130,8 +143,8 @@ func (c *Coordinator) GetHealthy(ctx context.Context, serviceName string) ([]*re
 	for _, service := range allServices {
         // Use the health checker if available
         if c.healthChecker != nil {
-            err := c.healthChecker.Check(ctx, service)
-            if err == nil {
+            isHealthy, err := c.healthChecker.Check(ctx, service)
+            if isHealthy && err == nil {
                 service.Health = registry.HealthStatusHealthy
                 healthyServices = append(healthyServices, service)
             }
@@ -203,11 +216,24 @@ func (c *Coordinator) SelectService(ctx context.Context, serviceName string) (*r
     return c.balancer.Select(ctx, healthyServices)
 }
 
-
 // Close implements ServiceRegistry interface
 func (c *Coordinator) Close() error {
-	c.cancel()
-	return c.storage.Close()
+	c.logger.Info("Shutting down coordinator...")
+	
+	// Signal shutdown to all background goroutines
+	c.shutdownCancel()
+	
+	// Wait for all background goroutines to finish
+	c.wg.Wait()
+	
+	// Close storage
+	if err := c.storage.Close(); err != nil {
+		c.logger.Error("Failed to close storage", zap.Error(err))
+		return err
+	}
+	
+	c.logger.Info("Coordinator shutdown complete")
+	return nil
 }
 
 // Helper methods
